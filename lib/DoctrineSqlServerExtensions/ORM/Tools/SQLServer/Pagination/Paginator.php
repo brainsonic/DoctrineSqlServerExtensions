@@ -43,11 +43,37 @@ class Paginator extends BasePaginator implements \Countable, \IteratorAggregate
              * will handle the root ID collection
              */
             $subQuery = $this->cloneQuery($query);
-            //$subQuery->setHint(Query::HINT_CUSTOM_OUTPUT_WALKER, 'StasisMedia\Database\Doctrine\ORM\Query\AST\SQLServer\SQLServerSqlWalker');
             $subQuery->setHint(Query::HINT_CUSTOM_TREE_WALKERS, array('DoctrineSqlServerExtensions\ORM\Tools\SQLServer\Pagination\LimitSubqueryWalker'));
             $subQuery->setFirstResult($offset);
             $subQuery->setMaxResults($length);
-            $ids = array_map('current', $subQuery->getScalarResult());
+
+            $keyIdentifier = false;
+            $ids = array();
+            foreach ($subQuery->getScalarResult() as $scalarResult) {
+                if (!$keyIdentifier) {
+                    if (array_key_exists('q_id', $scalarResult)) {
+                        $keyIdentifier = 'q_id';
+                    } else {
+                        foreach (array_keys($scalarResult) as $key) {
+                            if ('_id' == substr($key, 1)) {
+                                $keyIdentifier = $key;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if ($keyIdentifier) {
+                    $ids[] = $scalarResult[$keyIdentifier];
+                } else {
+                    // No key matching found.
+                    // What should we do???
+                    // To see that situation, we can look for a IN(-1)
+                    // request... 
+                    $ids[] = -1;
+                }
+            }
+            $ids = array_unique($ids);
 
             // don't do this for an empty id array
             if (count($ids) == 0) {
@@ -61,10 +87,7 @@ class Paginator extends BasePaginator implements \Countable, \IteratorAggregate
             $whereInQuery->setHint(Query::HINT_CUSTOM_TREE_WALKERS, array('Doctrine\ORM\Tools\Pagination\WhereInWalker'));
             $whereInQuery->setHint(WhereInWalker::HINT_PAGINATOR_ID_COUNT, count($ids));
             $whereInQuery->setFirstResult(null)->setMaxResults(null);
-            foreach ($ids as $i => $id) {
-                $i++;
-                $whereInQuery->setParameter("{$namespace}_{$i}", $id);
-            }
+            $whereInQuery->setParameter($namespace, $ids);
             $hm = $query->getHydrationMode();
             $result = $whereInQuery->getResult($hm);
 
