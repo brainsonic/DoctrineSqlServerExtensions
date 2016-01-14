@@ -194,8 +194,13 @@ class SQLServerSqlWalker extends SqlWalker
             $direction = $matches[2];
 
             $regex = sprintf('/%s\s+AS\s([\w]+)/', $column);
-            preg_match($regex, $select, $matches);
-            $alias = $matches[1];
+            // If the [HIDDEN] keyword have been used, column IS the alias,
+            // and so no AS keyword would be found.
+            $count = preg_match($regex, $select, $matches);
+            $alias = $column;
+            if ($count) {
+                $alias = $matches[1];
+            }
 
             $aliasOrder[] = $alias . ' ' . $direction;
         }
